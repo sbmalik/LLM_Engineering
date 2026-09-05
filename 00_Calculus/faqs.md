@@ -10,3 +10,6 @@ Some real ones where nothing is moving in time:
 - Sensitivity of a recipe. How much sweeter a cake gets per extra spoon of sugar.
 - Temperature across a wall. Degrees per centimetre from the warm side to the cold side; this is what decides how fast heat leaks through.
 - Medicine. Change in effect per milligram of dose.
+
+## Functions that don't have derivatives
+the functions which have breakages or sharp turns or corners don't have derivates at all and it is because thef delta-x is coming from the right is different from the delta-x coming from the left and tangent line (slope) changes immediately. For example ReLU @ 0
