@@ -156,3 +156,5 @@ mlruns/
 lightning_logs/
 tensorboard/
 .tensorboard/
+
+_assets/
