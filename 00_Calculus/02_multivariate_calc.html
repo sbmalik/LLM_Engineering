@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seeing a function of two inputs</title>
+<style>
+  :root{--paper:#f6f7f3;--grid:#dfe3da;--axis:#9aa093;--ink:#1f2a44;--blue:#2d3b66;--green:#1f8a70;--orange:#c8651b;--muted:#6b7280}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;line-height:1.5}
+  .top{padding:12px 20px 8px;border-bottom:1px solid var(--grid);display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center}
+  .top h1{font-size:20px;font-weight:600;margin:0}
+  .top label{font-size:15px}
+  .top input{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:14px;padding:5px 8px;border:1px solid var(--axis);border-radius:6px;width:200px}
+  .err{color:#b3261e;font-size:13px}
+  main{display:grid;grid-template-columns:minmax(300px,380px) 1fr}
+  aside{padding:14px 20px 20px;border-right:1px solid var(--grid)}
+  section{padding:14px 20px 20px;min-width:0;display:grid;grid-template-columns:3fr 2fr;grid-template-rows:auto auto;gap:12px}
+  .steps{display:flex;align-items:center;gap:8px;margin:0 0 10px}
+  .steps span{font-size:13px;color:var(--muted);flex:1}
+  button{font:inherit;font-size:14px;padding:6px 12px;border-radius:6px;cursor:pointer;border:1px solid var(--axis);background:#fff;color:var(--ink)}
+  button:disabled{opacity:.4;cursor:default}
+  h2{font-size:18px;font-weight:600;margin:0 0 6px}
+  .text{font-size:15px;margin:0 0 14px}
+  .text b.x{color:var(--orange)} .text b.y{color:var(--green)}
+  .knob{display:grid;grid-template-columns:1fr auto;gap:0 10px;margin:4px 0 10px;font-size:15px}
+  .knob input{grid-column:1/-1;width:100%}
+  .knob.x input{accent-color:var(--orange)} .knob.x span{color:var(--orange)}
+  .knob.y input{accent-color:var(--green)} .knob.y span{color:var(--green)}
+  .knob b{font-variant-numeric:tabular-nums;font-weight:600}
+  .vals{background:#fff;border:1px solid var(--grid);border-radius:8px;padding:10px 14px;font-size:15px}
+  .vals div{display:flex;justify-content:space-between;gap:10px;padding:2px 0}
+  .vals b{font-variant-numeric:tabular-nums}
+  .wrap{position:relative;border:1px solid var(--grid);border-radius:8px;background:#fff;overflow:hidden}
+  #w3{grid-row:1/3;height:min(520px,70vh)}
+  #wx,#wy{height:calc(min(520px,70vh)/2 - 6px)}
+  canvas{display:block;width:100%;height:100%}
+  #c3{cursor:grab}
+  .hint{position:absolute;left:10px;top:8px;font-size:12px;color:var(--muted)}
+  @media (max-width:900px){main{grid-template-columns:1fr}aside{border-right:0;border-bottom:1px solid var(--grid)}section{grid-template-columns:1fr}#w3{grid-row:auto;height:360px}#wx,#wy{height:220px}}
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>Seeing a function of two inputs</h1>
+  <label>f(x, y) = <input id="f" value="x^2*y + y" spellcheck="false"> <span class="err" id="err"></span></label>
+</div>
+<main>
+  <aside>
+    <div class="steps"><button id="prev">← Back</button><span id="stepno"></span><button id="next">Next →</button></div>
+    <h2 id="title"></h2>
+    <div class="text" id="text"></div>
+    <div class="knob x"><span>x</span><b id="vx"></b><input id="x" type="range" min="0" max="10" step="0.1" value="6"></div>
+    <div class="knob y"><span>y</span><b id="vy"></b><input id="y" type="range" min="0" max="10" step="0.1" value="4"></div>
+    <div class="vals" id="vals"></div>
+  </aside>
+  <section>
+    <div class="wrap" id="w3"><canvas id="c3"></canvas><div class="hint">drag to turn the picture</div></div>
+    <div class="wrap" id="wx"><canvas id="cx"></canvas></div>
+    <div class="wrap" id="wy"><canvas id="cy"></canvas></div>
+  </section>
+</main>
+
+<script>
+(() => {
+const $=id=>document.getElementById(id);
+const n=(v,d=1)=>Number.isFinite(v)?(Math.abs(v)<5e-4?0:v).toLocaleString('en',{maximumFractionDigits:d}):'—';
+const RANGE=[0,10];
+let f=(x,y)=>x*x*y+y, x0=6, y0=4, step=0, yaw=-0.6, pitch=0.45;
+
+function compile(src){
+  let s=src.trim().replace(/\^/g,'**');
+  if(!/^[0-9a-zA-Z_+\-*/().,\s]*$/.test(s))throw new Error('unexpected character');
+  const fn=new Function('x','y','with(Math){const e=E,pi=PI;return ('+s+');}');
+  if(typeof fn(1,2)!=='number')throw new Error('not a number');return fn;
+}
+const F=(x,y)=>{try{const v=f(x,y);return Number.isFinite(v)?v:NaN}catch{return NaN}};
+const dfx=(x,y)=>(F(x+1e-4,y)-F(x-1e-4,y))/2e-4, dfy=(x,y)=>(F(x,y+1e-4)-F(x,y-1e-4))/2e-4;
+
+const STEPS=[
+ {t:'1. Two inputs, one output',
+  h:()=>`A function of one input (like the parabola you played with earlier) needs a flat page: one axis for the input, one for the output. This function needs <b>two</b> inputs, <b class="x">x</b> and <b class="y">y</b>, and gives back one number. So the inputs live on a <em>floor</em> (the x–y grid) and the output is drawn as a <em>height</em> above the floor.<br><br>Move the two sliders: you are choosing a spot on the floor, and the dot shows how high the function is there. Right now f(${n(x0)}, ${n(y0)}) = ${n(F(x0,y0))}.`},
+ {t:'2. Freeze y, walk along x',
+  h:()=>`The trick to seeing any surface: <b>freeze one input</b>. Keep <b class="y">y = ${n(y0)}</b> and let only <b class="x">x</b> move. Now it is an ordinary one-input function again — the orange curve. It is drawn on the surface as a slice, and flat in the lower-right panel.<br><br>For f = x²y + y, freezing y turns it into (${n(y0)})·x² + ${n(y0)}: a parabola whose steepness is set by y. Drag the <b class="y">y</b> slider and watch the parabola get steeper or flatter.`},
+ {t:'3. Freeze x, walk along y',
+  h:()=>`Now the other way round. Keep <b class="x">x = ${n(x0)}</b> and let only <b class="y">y</b> move: the green curve.<br><br>For f = x²y + y, freezing x gives (${n(x0*x0)} + 1)·y = ${n(x0*x0+1)}·y: a straight line through zero. That is why the surface in your figure has straight edges along y and curved edges along x. Drag <b class="x">x</b> and the line tilts.`},
+ {t:'4. The surface is all the slices stacked',
+  h:()=>`Take the orange slice for every possible y and lay them side by side; or take the green slice for every x. Either way you get the whole blue surface. That is all a 3D graph is: a family of ordinary curves, stacked.<br><br>Drag the 3D picture to turn it. Looking straight along the y axis you see only parabolas; straight along x you see only lines.`},
+ {t:'5. Two tangents at one point',
+  h:()=>`At a point on a curve there was one tangent. At a point on a surface there are <b>two natural ones</b>: one along the orange slice, one along the green slice. Their slopes are the two <em>partial derivatives</em> — “partial” just means “only one input allowed to move”.<br><br>∂f/∂x (orange slope) = <b>${n(dfx(x0,y0))}</b> — for x²y + y this is 2xy = 2·${n(x0)}·${n(y0)}.<br>∂f/∂y (green slope) = <b>${n(dfy(x0,y0))}</b> — for x²y + y this is x² + 1 = ${n(x0*x0)} + 1.<br><br>Move the point around: near x = 0 the orange tangent is flat (the parabola's bottom), and the green tangent only depends on x, never on y.`},
+ {t:'6. Put them together: which way is uphill?',
+  h:()=>`The two slopes together tell you how the surface tilts at that spot. The arrow on the floor points in the direction of steepest climb: it is made of (<b class="x">${n(dfx(x0,y0))}</b>, <b class="y">${n(dfy(x0,y0))}</b>). Mathematicians call this arrow the <em>gradient</em>. Every rule you learned for one input (sum, product, chain…) still works here, applied one input at a time.<br><br>Try a different function at the top — <code>sin(x)*cos(y)*5+5</code> or <code>x*y</code> — and go through the steps again.`},
+ {t:'7. Real life: a plant on the windowsill',
+  h:()=>{const w=dfx(x0,y0),l=dfy(x0,y0);const adv=(v,more,less)=>Math.abs(v)<0.3?'is about right':v>0?more:less;
+   return `You are looking after a plant. Two things are in your hands: <b class="x">x = water</b> (glasses per week) and <b class="y">y = light</b> (hours per day). The height of the surface is <b>how tall the plant grows in a month</b>, in cm. Too little water and it dries out; too much and the roots rot. Same for light. So the surface is a hill with one best spot.<br><br>With ${n(x0)} glasses and ${n(y0)} hours it grows <b>${n(F(x0,y0))} cm</b>.<br><br>The two slopes are the advice:<br>• <b class="x">water slope = ${n(w)}</b> → one extra glass would change growth by ${n(w)} cm. Water ${adv(w,'<b>too little — add more</b>','<b>too much — cut back</b>')}.<br>• <b class="y">light slope = ${n(l)}</b> → one extra hour would change growth by ${n(l)} cm. Light ${adv(l,'<b>too little — add more</b>','<b>too much — cut back</b>')}.<br><br>The arrow on the floor combines both: it points the way to a taller plant. Follow it with the sliders until both slopes are near zero — that is the top of the hill, the best care. Every optimisation in real life works like this: you cannot see the whole hill, but the slopes under your feet tell you which way to turn each knob.`;}},
+];
+let savedF=null;
+
+// ---------- knobs ----------
+$('x').addEventListener('input',e=>{x0=+e.target.value;update();});
+$('y').addEventListener('input',e=>{y0=+e.target.value;update();});
+$('f').addEventListener('input',e=>{try{f=compile(e.target.value);$('err').textContent='';}catch(ex){$('err').textContent='Can’t read that';}update();});
+const HILL='30*exp(-((x-6)^2/12 + (y-7)^2/16))';
+function goto(st){
+  const last=STEPS.length-1;
+  if(st===last&&step!==last){savedF=$('f').value;$('f').value=HILL;f=compile(HILL);$('err').textContent='';x0=3;y0=4;$('x').value=x0;$('y').value=y0;}
+  if(step===last&&st!==last&&savedF!==null){$('f').value=savedF;try{f=compile(savedF);}catch{}}
+  step=st;update();
+}
+$('prev').addEventListener('click',()=>goto(Math.max(0,step-1)));
+$('next').addEventListener('click',()=>goto(Math.min(STEPS.length-1,step+1)));
+
+function update(){
+  $('stepno').textContent='Step '+(step+1)+' of '+STEPS.length;$('prev').disabled=step===0;$('next').disabled=step===STEPS.length-1;
+  $('title').textContent=STEPS[step].t;$('text').innerHTML=STEPS[step].h();
+  $('vx').textContent=n(x0);$('vy').textContent=n(y0);
+  $('vals').innerHTML=`<div><span>height f(x, y)</span><b>${n(F(x0,y0))}</b></div>
+    <div><span style="color:var(--orange)">slope along x (∂f/∂x)</span><b>${step>=5?n(dfx(x0,y0)):'—'}</b></div>
+    <div><span style="color:var(--green)">slope along y (∂f/∂y)</span><b>${step>=5?n(dfy(x0,y0)):'—'}</b></div>`;
+  draw();
+}
+
+// ---------- canvases ----------
+const c3=$('c3'),g3=c3.getContext('2d'),cx=$('cx'),gx=cx.getContext('2d'),cy=$('cy'),gy=cy.getContext('2d');
+const dims={};
+function fit(cv,g,id){const dpr=window.devicePixelRatio||1,w=$(id).clientWidth,h=$(id).clientHeight;cv.width=w*dpr;cv.height=h*dpr;g.setTransform(dpr,0,0,dpr,0,0);dims[id]=[w,h];}
+function resize(){fit(c3,g3,'w3');fit(cx,gx,'wx');fit(cy,gy,'wy');draw();}
+
+// z range for the whole surface
+function zRange(){let lo=Infinity,hi=-Infinity;for(let i=0;i<=20;i++)for(let j=0;j<=20;j++){const z=F(i/2,j/2);if(Number.isFinite(z)){lo=Math.min(lo,z);hi=Math.max(hi,z);}}
+  if(!Number.isFinite(lo)){lo=0;hi=1;}if(hi-lo<1e-9)hi=lo+1;return[Math.min(lo,0),hi];}
+
+function draw(){
+  const [zlo,zhi]=zRange();
+  draw3D(zlo,zhi);
+  drawSlice(gx,dims.wx,'x',zlo,zhi);
+  drawSlice(gy,dims.wy,'y',zlo,zhi);
+}
+
+// ----- 3D -----
+function draw3D(zlo,zhi){
+  const [W,H]=dims.w3;g3.clearRect(0,0,W,H);
+  const S=Math.min(W,H)*0.052;
+  const proj=(x,y,z)=>{const X=x-5,Y=y-5,Z=(z-zlo)/(zhi-zlo)*8-4;
+    const cx_=X*Math.cos(yaw)-Y*Math.sin(yaw),cy_=X*Math.sin(yaw)+Y*Math.cos(yaw);
+    const sy=cy_*Math.cos(pitch)-Z*Math.sin(pitch),depth=cy_*Math.sin(pitch)+Z*Math.cos(pitch);
+    return[W/2+cx_*S,H/2+sy*S+30,depth];};
+  const N=20;
+  // floor grid
+  g3.strokeStyle='#e5e8e0';g3.lineWidth=1;g3.beginPath();
+  for(let i=0;i<=10;i++){let a=proj(i,0,zlo),b=proj(i,10,zlo);g3.moveTo(a[0],a[1]);g3.lineTo(b[0],b[1]);a=proj(0,i,zlo);b=proj(10,i,zlo);g3.moveTo(a[0],a[1]);g3.lineTo(b[0],b[1]);}
+  g3.stroke();
+  // axes
+  g3.strokeStyle='#9aa093';g3.lineWidth=1.5;g3.fillStyle='#6b7280';g3.font='600 14px Palatino,Georgia,serif';g3.textAlign='center';g3.textBaseline='middle';
+  const ax=(a,b,label,col)=>{const p=proj(...a),q=proj(...b);g3.strokeStyle=col;g3.beginPath();g3.moveTo(p[0],p[1]);g3.lineTo(q[0],q[1]);g3.stroke();g3.fillStyle=col;g3.fillText(label,q[0]+(q[0]-p[0])*0.08,q[1]+(q[1]-p[1])*0.08);};
+  const L7=step===STEPS.length-1;ax([0,0,zlo],[10.6,0,zlo],L7?'water':'x','#c8651b');ax([0,0,zlo],[0,10.6,zlo],L7?'light':'y','#1f8a70');ax([0,0,zlo],[0,0,zhi+(zhi-zlo)*0.08],L7?'growth (cm)':'f(x, y)','#1f2a44');
+  g3.fillStyle='#6b7280';g3.font='11px ui-monospace,Menlo,monospace';
+  for(let i=0;i<=10;i+=2){let p=proj(i,-0.6,zlo);g3.fillText(i,p[0],p[1]);p=proj(-0.6,i,zlo);g3.fillText(i,p[0],p[1]);}
+  for(let t=0;t<=4;t++){const z=zlo+(zhi-zlo)*t/4;const p=proj(-0.4,0,z);g3.textAlign='right';g3.fillText(n(z,0),p[0],p[1]);}
+  // surface, painter's order
+  const quads=[];
+  for(let i=0;i<N;i++)for(let j=0;j<N;j++){const c=[[i,j],[i+1,j],[i+1,j+1],[i,j+1]].map(([a,b])=>{const x=a*10/N,y=b*10/N;return proj(x,y,F(x,y));});
+    if(c.some(p=>!Number.isFinite(p[1])))continue;quads.push({c,d:c.reduce((s,p)=>s+p[2],0)/4});}
+  quads.sort((a,b)=>a.d-b.d);
+  const showSurf=step!==1&&step!==2||true;
+  for(const q of quads){g3.beginPath();q.c.forEach((p,i)=>i?g3.lineTo(p[0],p[1]):g3.moveTo(p[0],p[1]));g3.closePath();
+    g3.fillStyle=step===1||step===2?'rgba(143,195,232,.35)':'rgba(143,195,232,.75)';g3.fill();g3.strokeStyle='rgba(45,59,102,.25)';g3.lineWidth=.6;g3.stroke();}
+  // stacked slices (step 4)
+  if(step===3){g3.lineWidth=1.4;for(let yy=0;yy<=10;yy+=1){g3.strokeStyle='rgba(200,101,27,.7)';g3.beginPath();for(let i=0;i<=40;i++){const p=proj(i/4,yy,F(i/4,yy));i?g3.lineTo(p[0],p[1]):g3.moveTo(p[0],p[1]);}g3.stroke();}
+    for(let xx=0;xx<=10;xx+=1){g3.strokeStyle='rgba(31,138,112,.7)';g3.beginPath();for(let i=0;i<=40;i++){const p=proj(xx,i/4,F(xx,i/4));i?g3.lineTo(p[0],p[1]):g3.moveTo(p[0],p[1]);}g3.stroke();}}
+  // slices through the point
+  const slice=(dir,col)=>{g3.strokeStyle=col;g3.lineWidth=3;g3.beginPath();for(let i=0;i<=60;i++){const t=i/6;const p=dir==='x'?proj(t,y0,F(t,y0)):proj(x0,t,F(x0,t));i?g3.lineTo(p[0],p[1]):g3.moveTo(p[0],p[1]);}g3.stroke();};
+  if(step===1||step>=4)slice('x','#c8651b');
+  if(step===2||step>=4)slice('y','#1f8a70');
+  // tangents (step 5, 6)
+  const z0=F(x0,y0);
+  if(step>=4){const L=2.2;const tx=[proj(x0-L,y0,z0-dfx(x0,y0)*L),proj(x0+L,y0,z0+dfx(x0,y0)*L)],ty=[proj(x0,y0-L,z0-dfy(x0,y0)*L),proj(x0,y0+L,z0+dfy(x0,y0)*L)];
+    g3.setLineDash([7,5]);g3.lineWidth=2.5;
+    g3.strokeStyle='#c8651b';g3.beginPath();g3.moveTo(tx[0][0],tx[0][1]);g3.lineTo(tx[1][0],tx[1][1]);g3.stroke();
+    g3.strokeStyle='#1f8a70';g3.beginPath();g3.moveTo(ty[0][0],ty[0][1]);g3.lineTo(ty[1][0],ty[1][1]);g3.stroke();g3.setLineDash([]);}
+  // gradient arrow on the floor (step 6)
+  if(step>=5){const gxv=dfx(x0,y0),gyv=dfy(x0,y0),m=Math.hypot(gxv,gyv)||1;const a=proj(x0,y0,zlo),b=proj(x0+gxv/m*2,y0+gyv/m*2,zlo);
+    g3.strokeStyle='#1f2a44';g3.fillStyle='#1f2a44';g3.lineWidth=3;g3.beginPath();g3.moveTo(a[0],a[1]);g3.lineTo(b[0],b[1]);g3.stroke();
+    const ang=Math.atan2(b[1]-a[1],b[0]-a[0]);g3.beginPath();g3.moveTo(b[0],b[1]);g3.lineTo(b[0]-10*Math.cos(ang-.5),b[1]-10*Math.sin(ang-.5));g3.lineTo(b[0]-10*Math.cos(ang+.5),b[1]-10*Math.sin(ang+.5));g3.closePath();g3.fill();
+    g3.font='13px Palatino,Georgia,serif';g3.textAlign='left';g3.fillText(step===5?'steepest uphill':'towards a taller plant',b[0]+8,b[1]);}
+  // the point: floor spot, vertical stick, dot
+  const fl=proj(x0,y0,zlo),pt=proj(x0,y0,z0);
+  g3.strokeStyle='#9aa093';g3.setLineDash([3,3]);g3.beginPath();g3.moveTo(fl[0],fl[1]);g3.lineTo(pt[0],pt[1]);g3.stroke();g3.setLineDash([]);
+  g3.beginPath();g3.arc(fl[0],fl[1],4,0,Math.PI*2);g3.fillStyle='#9aa093';g3.fill();
+  g3.beginPath();g3.arc(pt[0],pt[1],7,0,Math.PI*2);g3.fillStyle='#fff';g3.fill();g3.strokeStyle='#1f2a44';g3.lineWidth=2.5;g3.stroke();
+  g3.fillStyle='#1f2a44';g3.font='600 13px Palatino,Georgia,serif';g3.textAlign='left';g3.textBaseline='bottom';g3.fillText('f = '+n(z0),pt[0]+10,pt[1]-8);
+}
+
+// ----- 2D slices -----
+function drawSlice(g,[W,H],dir,zlo,zhi){
+  g.clearRect(0,0,W,H);
+  const on = dir==='x' ? (step===1||step>=3) : (step===2||step>=3);
+  const col=dir==='x'?'#c8651b':'#1f8a70', other=dir==='x'?'y':'x', fixed=dir==='x'?y0:x0;
+  g.fillStyle='#6b7280';g.font='13px Palatino,Georgia,serif';g.textAlign='left';g.textBaseline='top';
+  g.fillText(dir==='x'?`freeze y = ${n(y0)}, let x move`:`freeze x = ${n(x0)}, let y move`,10,8);
+  if(!on){g.fillStyle='#9aa093';g.font='italic 14px Palatino,Georgia,serif';g.textAlign='center';g.textBaseline='middle';g.fillText('(comes in step '+(dir==='x'?2:3)+')',W/2,H/2);return;}
+  const M={l:48,r:12,t:30,b:26};
+  const X=u=>M.l+(u/10)*(W-M.l-M.r),Y=u=>H-M.b-(u-zlo)/(zhi-zlo)*(H-M.t-M.b);
+  g.strokeStyle='#dfe3da';g.lineWidth=1;g.beginPath();for(let i=0;i<=10;i+=2){g.moveTo(X(i),M.t);g.lineTo(X(i),H-M.b);}g.stroke();
+  g.fillStyle='#6b7280';g.font='11px ui-monospace,Menlo,monospace';g.textAlign='center';g.textBaseline='top';
+  for(let i=0;i<=10;i+=2)g.fillText(i,X(i),H-M.b+4);
+  g.textAlign='right';g.textBaseline='middle';for(let t=0;t<=2;t++){const z=zlo+(zhi-zlo)*t/2;g.fillText(n(z,0),M.l-4,Y(z));}
+  g.fillStyle=col;g.font='600 13px Palatino,Georgia,serif';g.textAlign='right';g.textBaseline='bottom';g.fillText(dir,W-M.r,H-M.b-2);
+  g.save();g.beginPath();g.rect(M.l,M.t,W-M.l-M.r,H-M.t-M.b);g.clip();
+  g.strokeStyle=col;g.lineWidth=2.5;g.beginPath();for(let i=0;i<=100;i++){const t=i/10,z=dir==='x'?F(t,y0):F(x0,t);i?g.lineTo(X(t),Y(z)):g.moveTo(X(t),Y(z));}g.stroke();
+  const t0=dir==='x'?x0:y0,z0=F(x0,y0),m=dir==='x'?dfx(x0,y0):dfy(x0,y0);
+  if(step>=4){g.setLineDash([7,5]);g.lineWidth=2;g.beginPath();g.moveTo(X(0),Y(z0+m*(0-t0)));g.lineTo(X(10),Y(z0+m*(10-t0)));g.stroke();g.setLineDash([]);}
+  g.restore();
+  g.beginPath();g.arc(X(t0),Y(z0),6,0,Math.PI*2);g.fillStyle='#fff';g.fill();g.strokeStyle='#1f2a44';g.lineWidth=2;g.stroke();
+  if(step>=4){g.fillStyle='#1f2a44';g.font='600 13px Palatino,Georgia,serif';g.textAlign=X(t0)>W*.6?'right':'left';g.textBaseline='bottom';g.fillText('slope '+n(m),X(t0)+(X(t0)>W*.6?-10:10),Y(z0)-8);}
+}
+
+// rotate 3D by dragging
+let drag=null;
+c3.addEventListener('pointerdown',e=>{drag=[e.clientX,e.clientY,yaw,pitch];c3.setPointerCapture(e.pointerId);c3.style.cursor='grabbing';});
+c3.addEventListener('pointermove',e=>{if(!drag)return;yaw=drag[2]+(e.clientX-drag[0])*0.01;pitch=Math.max(0.05,Math.min(1.4,drag[3]+(e.clientY-drag[1])*0.01));draw();});
+const up=()=>{drag=null;c3.style.cursor='grab';};c3.addEventListener('pointerup',up);c3.addEventListener('pointercancel',up);
+
+window.addEventListener('resize',resize);resize();update();
+})();
+</script>
+</body>
+</html>
