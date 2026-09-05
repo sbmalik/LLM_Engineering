@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Secant & tangent explorer</title>
+<style>
+  :root{
+    --paper:#f6f7f3;
+    --grid:#dfe3da;
+    --axis:#9aa093;
+    --ink:#1f2a44;
+    --curve:#2d3b66;
+    --secant:#c8651b;
+    --tangent:#1f8a70;
+    --muted:#6b7280;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;background:var(--paper);color:var(--ink);
+    font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+    display:flex;flex-direction:column;height:100vh;height:100dvh;overflow:hidden;
+  }
+  header{padding:12px 20px 4px;flex:none;display:flex;flex-wrap:wrap;gap:8px 18px;align-items:baseline}
+  header h1{font-size:20px;font-weight:600;margin:0;letter-spacing:.01em}
+  header p{margin:0;color:var(--muted);font-size:14px}
+  #wrap{flex:1;position:relative;min-height:0}
+  canvas{display:block;width:100%;height:100%;touch-action:none;cursor:crosshair}
+  #panel{
+    display:grid;grid-template-columns:1fr auto;gap:10px 24px;align-items:center;
+    padding:8px 20px 10px;border-bottom:1px solid var(--grid);flex:none;
+  }
+  .fn{display:flex;align-items:center;gap:8px;font-size:16px}
+  .fn label{font-style:italic}
+  .fn input{
+    font:inherit;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:15px;
+    padding:6px 10px;border:1px solid var(--axis);border-radius:6px;background:#fff;color:var(--ink);
+    width:min(360px,60vw);
+  }
+  .fn input:focus{outline:2px solid var(--curve);outline-offset:1px}
+  .fn .err{color:#b3261e;font-size:13px;min-width:0}
+  .readouts{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px 22px;font-size:17px}
+  .readouts b{font-weight:600;font-variant-numeric:tabular-nums}
+  .sec{color:var(--secant)} .tan{color:var(--tangent)}
+  .actions{display:flex;gap:8px;flex-wrap:wrap}
+  button{
+    font:inherit;font-size:14px;padding:7px 12px;border-radius:6px;cursor:pointer;
+    border:1px solid var(--axis);background:#fff;color:var(--ink);
+  }
+  button:hover{border-color:var(--ink)}
+  button:focus-visible{outline:2px solid var(--curve);outline-offset:2px}
+  .hint{grid-column:1/-1;color:var(--muted);font-size:13px}
+  code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+  @media (max-width:700px){#panel{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Secant &amp; tangent explorer</h1>
+  <p>Drag <span class="sec">A</span> and <span class="sec">B</span> along the curve. Scroll to zoom, drag empty space to pan.</p>
+</header>
+
+<div id="panel">
+  <div class="fn">
+    <label for="f">f(x) =</label>
+    <input id="f" value="x^3/6 - x" spellcheck="false" autocomplete="off">
+    <span class="err" id="err"></span>
+  </div>
+  <div class="actions">
+    <button id="half">Halve the gap</button>
+    <button id="anim">Slide B into A</button>
+    <button id="reset">Reset</button>
+  </div>
+  <div class="readouts">
+    <span>Δx = <b id="dx"></b></span>
+    <span>Δy = <b id="dy"></b></span>
+    <span class="sec">secant slope Δy/Δx = <b id="ms"></b></span>
+    <span class="tan">tangent slope f′(a) = <b id="mt"></b></span>
+    <span>difference = <b id="diff"></b></span>
+  </div>
+  <div class="hint">Try <code>sin(x)</code>, <code>x^2</code>, <code>exp(x/2)</code>, <code>abs(x)</code>, <code>1/x</code>, <code>sqrt(x+4)</code>. You can use <code>^</code>, <code>pi</code>, <code>e</code>, <code>log</code>, <code>cos</code>, <code>tan</code>.</div>
+</div>
+
+<div id="wrap"><canvas id="c"></canvas></div>
+
+
+<script>
+(() => {
+  const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+  const wrap = document.getElementById('wrap');
+  const css = getComputedStyle(document.documentElement);
+  const C = k => css.getPropertyValue(k).trim();
+
+  // ---------- state ----------
+  let f = x => x*x*x/6 - x;
+  let view = { xmin:-6, xmax:6, ycenter:0 };   // y range derived from aspect ratio
+  let a = -2.4, b = 1.6;                       // x positions of the two points
+  let drag = null;                              // 'A' | 'B' | {pan}
+  let animId = null;
+
+  // ---------- function parsing ----------
+  function compile(src){
+    let s = src.trim().replace(/\^/g,'**').replace(/\bln\(/g,'log(');
+    if(!/^[0-9a-zA-Z_+\-*/().,\s]*$/.test(s)) throw new Error('unexpected character');
+    const fn = new Function('x','with(Math){const e=E,pi=PI;return ('+s+');}');
+    const t = fn(1.234);
+    if(typeof t !== 'number') throw new Error('does not return a number');
+    return fn;
+  }
+  const safe = x => { try{ const y=f(x); return Number.isFinite(y)?y:NaN }catch{ return NaN } };
+  const deriv = x => { const h=1e-5; return (safe(x+h)-safe(x-h))/(2*h) };
+
+  // ---------- geometry ----------
+  let W=0,H=0,dpr=1;
+  function resize(){
+    dpr = window.devicePixelRatio||1;
+    W = wrap.clientWidth; H = wrap.clientHeight;
+    cv.width = W*dpr; cv.height = H*dpr;
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    draw();
+  }
+  const scale = () => W/(view.xmax-view.xmin);        // px per unit (same both axes)
+  const yRange = () => { const half = H/scale()/2; return [view.ycenter-half, view.ycenter+half]; };
+  const px = x => (x-view.xmin)*scale();
+  const py = y => H - (y-yRange()[0])*scale();
+  const ux = X => view.xmin + X/scale();
+  const uy = Y => yRange()[0] + (H-Y)/scale();
+
+  // ---------- drawing ----------
+  function niceStep(unitsPerPx){
+    const target = 80*unitsPerPx;               // ~80px between grid lines
+    const p = Math.pow(10, Math.floor(Math.log10(target)));
+    for(const m of [1,2,5,10]) if(m*p>=target) return m*p;
+    return 10*p;
+  }
+  function fmt(v,d=3){ return Number.isFinite(v) ? (Math.abs(v)<1e-9?0:v).toFixed(d).replace(/\.?0+$/,'') : '—'; }
+
+  function line(m, x0, y0, color, width, dash){
+    // y = y0 + m (x - x0), clipped to view
+    const [ylo,yhi] = yRange();
+    ctx.save(); ctx.strokeStyle=color; ctx.lineWidth=width; if(dash) ctx.setLineDash(dash);
+    ctx.beginPath();
+    if(!Number.isFinite(m)){ ctx.moveTo(px(x0),0); ctx.lineTo(px(x0),H); }
+    else { ctx.moveTo(px(view.xmin), py(y0+m*(view.xmin-x0))); ctx.lineTo(px(view.xmax), py(y0+m*(view.xmax-x0))); }
+    ctx.stroke(); ctx.restore();
+  }
+
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    const [ylo,yhi] = yRange();
+    const step = niceStep(1/scale());
+
+    // grid
+    ctx.strokeStyle=C('--grid'); ctx.lineWidth=1;
+    ctx.beginPath();
+    for(let x=Math.ceil(view.xmin/step)*step; x<=view.xmax; x+=step){ ctx.moveTo(px(x),0); ctx.lineTo(px(x),H); }
+    for(let y=Math.ceil(ylo/step)*step; y<=yhi; y+=step){ ctx.moveTo(0,py(y)); ctx.lineTo(W,py(y)); }
+    ctx.stroke();
+
+    // axes + labels
+    ctx.strokeStyle=C('--axis'); ctx.lineWidth=1.2;
+    ctx.beginPath(); ctx.moveTo(0,py(0)); ctx.lineTo(W,py(0)); ctx.moveTo(px(0),0); ctx.lineTo(px(0),H); ctx.stroke();
+    ctx.fillStyle=C('--muted'); ctx.font='12px ui-monospace,Menlo,monospace'; ctx.textAlign='center'; ctx.textBaseline='top';
+    const ay = Math.min(Math.max(py(0),0),H-16), ax = Math.min(Math.max(px(0),18),W-4);
+    for(let x=Math.ceil(view.xmin/step)*step; x<=view.xmax; x+=step){ if(Math.abs(x)>1e-9) ctx.fillText(fmt(x,2), px(x), ay+3); }
+    ctx.textAlign='right'; ctx.textBaseline='middle';
+    for(let y=Math.ceil(ylo/step)*step; y<=yhi; y+=step){ if(Math.abs(y)>1e-9) ctx.fillText(fmt(y,2), ax-4, py(y)); }
+
+    // curve
+    ctx.strokeStyle=C('--curve'); ctx.lineWidth=2.2; ctx.lineJoin='round';
+    ctx.beginPath(); let pen=false, prev=NaN;
+    for(let X=0; X<=W; X+=1){
+      const y = safe(ux(X));
+      const jump = Number.isFinite(prev) && Number.isFinite(y) && Math.abs(y-prev)*scale() > H*3; // asymptote guard
+      if(!Number.isFinite(y) || jump){ pen=false; prev=y; continue; }
+      const Y = py(y);
+      if(!pen){ ctx.moveTo(X,Y); pen=true; } else ctx.lineTo(X,Y);
+      prev=y;
+    }
+    ctx.stroke();
+
+    const fa=safe(a), fb=safe(b);
+    const dx=b-a, dy=fb-fa, ms=dy/dx, mt=deriv(a);
+
+    // tangent at A
+    if(Number.isFinite(mt) && Number.isFinite(fa)) line(mt, a, fa, C('--tangent'), 2, [8,5]);
+    // secant through A,B
+    if(Number.isFinite(ms) && Number.isFinite(fa)) line(ms, a, fa, C('--secant'), 2);
+
+    // rise/run triangle
+    if(Number.isFinite(fa)&&Number.isFinite(fb)){
+      ctx.save(); ctx.strokeStyle=C('--secant'); ctx.globalAlpha=.55; ctx.lineWidth=1.2; ctx.setLineDash([3,4]);
+      ctx.beginPath(); ctx.moveTo(px(a),py(fa)); ctx.lineTo(px(b),py(fa)); ctx.lineTo(px(b),py(fb)); ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle=C('--secant'); ctx.font='italic 13px Palatino,Georgia,serif'; ctx.textAlign='center'; ctx.textBaseline='top';
+      if(Math.abs(dx)*scale()>28) ctx.fillText('Δx', px((a+b)/2), py(fa)+(dy>=0?4:-16));
+      ctx.textAlign=dx>=0?'left':'right'; ctx.textBaseline='middle';
+      if(Math.abs(dy)*scale()>22) ctx.fillText('Δy', px(b)+(dx>=0?6:-6), py((fa+fb)/2));
+    }
+
+    // points
+    for(const [x,y,name] of [[a,fa,'A'],[b,fb,'B']]){
+      if(!Number.isFinite(y)) continue;
+      ctx.beginPath(); ctx.arc(px(x),py(y),7,0,Math.PI*2);
+      ctx.fillStyle='#fff'; ctx.fill(); ctx.lineWidth=2.5; ctx.strokeStyle=C('--secant'); ctx.stroke();
+      ctx.fillStyle=C('--ink'); ctx.font='600 14px Palatino,Georgia,serif'; ctx.textAlign='left'; ctx.textBaseline='bottom';
+      ctx.fillText(name+' ('+fmt(x,2)+', '+fmt(y,2)+')', px(x)+10, py(y)-8);
+    }
+
+    // readouts
+    document.getElementById('dx').textContent=fmt(dx,4);
+    document.getElementById('dy').textContent=fmt(dy,4);
+    document.getElementById('ms').textContent=fmt(ms,4);
+    document.getElementById('mt').textContent=fmt(mt,4);
+    document.getElementById('diff').textContent=fmt(Math.abs(ms-mt),4);
+  }
+
+  // ---------- interaction ----------
+  const pos = e => { const r=cv.getBoundingClientRect(); return [e.clientX-r.left, e.clientY-r.top]; };
+  const hit = (X,Y,x) => { const y=safe(x); return Number.isFinite(y) && Math.hypot(px(x)-X, py(y)-Y) < 16; };
+
+  cv.addEventListener('pointerdown', e => {
+    stopAnim(); const [X,Y]=pos(e); cv.setPointerCapture(e.pointerId);
+    if(hit(X,Y,a)) drag='A'; else if(hit(X,Y,b)) drag='B';
+    else drag={X,Y,xmin:view.xmin,xmax:view.xmax,yc:view.ycenter};
+    cv.style.cursor = drag==='A'||drag==='B' ? 'grabbing' : 'move';
+  });
+  cv.addEventListener('pointermove', e => {
+    const [X,Y]=pos(e);
+    if(!drag){ cv.style.cursor = (hit(X,Y,a)||hit(X,Y,b)) ? 'grab' : 'crosshair'; return; }
+    if(drag==='A'){ a=ux(X); if(Math.abs(b-a)<1e-6) a+=1e-6; }
+    else if(drag==='B'){ b=ux(X); if(Math.abs(b-a)<1e-6) b+=1e-6; }
+    else { const s=scale(); const ddx=(drag.X-X)/s, ddy=(Y-drag.Y)/s; view.xmin=drag.xmin+ddx; view.xmax=drag.xmax+ddx; view.ycenter=drag.yc+ddy; }
+    draw();
+  });
+  const up = () => { drag=null; cv.style.cursor='crosshair'; };
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+
+  cv.addEventListener('wheel', e => {
+    e.preventDefault(); const [X,Y]=pos(e); const k = Math.exp(e.deltaY*0.0015);
+    const cx=ux(X), cy=uy(Y);
+    view.xmin = cx + (view.xmin-cx)*k; view.xmax = cx + (view.xmax-cx)*k;
+    view.ycenter = cy + (view.ycenter-cy)*k;
+    draw();
+  }, {passive:false});
+
+  // function input
+  const inp=document.getElementById('f'), err=document.getElementById('err');
+  inp.addEventListener('input', () => {
+    try{ f=compile(inp.value); err.textContent=''; }
+    catch(ex){ err.textContent='Can’t read that: '+ex.message; }
+    draw();
+  });
+
+  // buttons
+  function stopAnim(){ if(animId){ cancelAnimationFrame(animId); animId=null; } }
+  document.getElementById('half').onclick = () => { stopAnim(); b = a + (b-a)/2; draw(); };
+  document.getElementById('anim').onclick = () => {
+    stopAnim(); const b0=b, t0=performance.now(), dur=2600, sign=Math.sign(b0-a)||1;
+    const tick = now => {
+      const t=Math.min(1,(now-t0)/dur), ease=1-Math.pow(1-t,3);
+      const gap=(b0-a)*(1-ease); b = a + (Math.abs(gap)<1e-4 ? sign*1e-4 : gap); draw();
+      if(t<1) animId=requestAnimationFrame(tick); else animId=null;
+    };
+    animId=requestAnimationFrame(tick);
+  };
+  document.getElementById('reset').onclick = () => { stopAnim(); view={xmin:-6,xmax:6,ycenter:0}; a=-2.4; b=1.6; draw(); };
+
+  window.addEventListener('resize', resize);
+  resize();
+})();
+</script>
+</body>
+</html>

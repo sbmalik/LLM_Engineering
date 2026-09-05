@@ -1,0 +1,158 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+.eggs/
+dist/
+build/
+pip-wheel-metadata/
+*.manifest
+*.spec
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.env/
+.conda/
+.python-version
+
+# Environment / secrets (API keys, tokens)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+credentials.json
+service-account*.json
+
+# Jupyter
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.cache/
+coverage.xml
+*.cover
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# IDEs / editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Logs
+*.log
+logs/
+log/
+
+# LLM / ML artifacts
+*.pt
+*.pth
+*.bin
+*.onnx
+*.safetensors
+*.gguf
+*.ggml
+*.h5
+*.hdf5
+*.ckpt
+*.pkl
+*.pickle
+*.joblib
+models/
+checkpoints/
+weights/
+embeddings/
+vector_store/
+chroma*/
+.chroma/
+faiss_index/
+*.faiss
+lance/
+.lancedb/
+qdrant_storage/
+milvus/
+weaviate_data/
+
+# Hugging Face / model caches
+.cache/huggingface/
+.huggingface/
+transformers_cache/
+sentence_transformers/
+
+# OpenAI / LangChain / agent tooling
+.langchain/
+.langsmith/
+.crewai/
+.autogen/
+.openai/
+
+# Data dumps (keep small samples tracked if needed)
+data/raw/
+data/processed/
+*.csv
+*.tsv
+*.parquet
+*.arrow
+*.feather
+*.sqlite
+*.db
+*.duckdb
+
+# Streamlit / Gradio / local apps
+.streamlit/secrets.toml
+.gradio/
+
+# Docker
+*.tar
+
+# Misc
+tmp/
+temp/
+.tmp/
+.temp/
+*.bak
+*.tmp
+out/
+output/
+outputs/
+runs/
+wandb/
+mlruns/
+lightning_logs/
+tensorboard/
+.tensorboard/
