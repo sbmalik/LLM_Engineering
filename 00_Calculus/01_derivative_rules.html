@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Derivative rules for beginners</title>
+<style>
+  :root{--paper:#f6f7f3;--grid:#dfe3da;--axis:#9aa093;--ink:#1f2a44;--blue:#2d3b66;--green:#1f8a70;--orange:#c8651b;--muted:#6b7280;--water:#8fc3e8;--wash:#fdf1e6}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;line-height:1.5}
+  .top{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;padding:14px 20px 10px;border-bottom:1px solid var(--grid)}
+  .top h1{font-size:20px;font-weight:600;margin:0}
+  .top p{margin:0;color:var(--muted);font-size:14px}
+  select{font:inherit;font-size:16px;padding:6px 10px;border:1px solid var(--axis);border-radius:6px;background:#fff;color:var(--ink)}
+  select:focus-visible,input:focus-visible,button:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+  main{display:grid;grid-template-columns:minmax(290px,370px) 1fr}
+  aside{padding:14px 20px 20px;border-right:1px solid var(--grid)}
+  section{padding:14px 20px 20px;min-width:0}
+  h2{font-size:18px;font-weight:600;margin:0 0 6px}
+  .story{margin:0 0 14px;font-size:15px}
+  h3{font-size:13px;font-weight:600;color:var(--muted);margin:14px 0 4px;letter-spacing:.02em}
+  .knob{display:grid;grid-template-columns:1fr auto;gap:0 10px;margin:4px 0 10px;font-size:15px}
+  .knob input{grid-column:1/-1;width:100%}
+  .knob b{font-variant-numeric:tabular-nums;font-weight:600}
+  .knob.now input{accent-color:var(--blue)} .knob.speed input{accent-color:var(--orange)}
+  .knob small{grid-column:1/-1;color:var(--muted)}
+  .box{background:#fff;border:1px solid var(--grid);border-radius:8px;padding:12px 16px;margin:0 0 12px}
+  .box p{margin:0 0 6px} .box p:last-child{margin:0}
+  .say{font-size:17px} .say b{color:var(--green);font-variant-numeric:tabular-nums}
+  .words{font-size:16px;color:var(--ink)}
+  .words b{color:var(--orange)}
+  .math{font-size:14px;color:var(--muted)} .math code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;color:var(--ink)}
+  #wrap{position:relative;height:min(320px,44vh);border:1px solid var(--grid);border-radius:8px;background:#fff;overflow:hidden}
+  canvas{display:block;width:100%;height:100%}
+  .play{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0 0;font-size:15px}
+  button{font:inherit;font-size:14px;padding:6px 12px;border-radius:6px;cursor:pointer;border:1px solid var(--axis);background:#fff;color:var(--ink)}
+  button:hover{border-color:var(--ink)}
+  .result{font-size:15px;margin:8px 0 0;min-height:1.5em}
+  .result b{font-variant-numeric:tabular-nums}
+  @media (max-width:760px){main{grid-template-columns:1fr}aside{border-right:0;border-bottom:1px solid var(--grid)}}
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>Derivative rules for beginners</h1>
+  <label>Example: <select id="rule"></select></label>
+  <p>Blue knobs are “how things are right now”. Orange knobs are “how fast each thing is changing”.</p>
+</div>
+<main>
+  <aside>
+    <h2 id="title"></h2>
+    <p class="story" id="story"></p>
+    <h3>Right now</h3><div id="nowKnobs"></div>
+    <h3>How fast things change</h3><div id="speedKnobs"></div>
+  </aside>
+  <section>
+    <div class="box"><p class="say" id="say"></p></div>
+    <div class="box"><p class="words" id="words"></p><p class="math" id="math"></p></div>
+    <div id="wrap"><canvas id="c"></canvas></div>
+    <div class="play"><span>Let time pass and compare with the rule:</span>
+      <button data-dt="1"></button><button data-dt="0.1"></button><button data-dt="0.01"></button></div>
+    <p class="result" id="result"></p>
+  </section>
+</main>
+
+<script>
+(() => {
+const n=(v,d)=>Number.isFinite(v)?(Math.abs(v)<1e-9?0:v).toLocaleString('en',{maximumFractionDigits:d??(Math.abs(v)>=100?0:Math.abs(v)>=10?1:2)}):'—';
+const TAU=Math.PI*2;
+
+const R={
+  sum:{ name:'Sum rule — bathtub with two taps', title:'A bathtub with two taps',
+    story:'Two taps pour into the same tub. To know how fast the tub is filling, you only need to add the two flows. That is the whole sum rule.',
+    tu:'minute', qu:'litres', qname:'Water in the tub',
+    now:[{k:'w',label:'Water in the tub',unit:'litres',min:0,max:200,step:1,def:40}],
+    speed:[{k:'a',label:'Tap 1 flow',unit:'litres per minute',min:0,max:15,step:0.5,def:6},
+           {k:'b',label:'Tap 2 flow',unit:'litres per minute',min:0,max:15,step:0.5,def:2}],
+    q:p=>p.w, rate:p=>p.a+p.b,
+    step:(p,dt)=>({...p,w:p.w+(p.a+p.b)*dt}),
+    say:p=>`The tub holds ${n(p.w)} litres and is filling at <b>${n(p.a+p.b)} litres per minute</b>.`,
+    words:p=>`Filling speed = tap 1 flow + tap 2 flow = <b>${n(p.a)} + ${n(p.b)} = ${n(p.a+p.b)}</b>`,
+    math:`Textbook form: <code>(f + g)′ = f′ + g′</code>. Here f is the water from tap 1, g the water from tap 2. The little dash ′ means “the speed of”.`,
+    draw:(c,W,H,p)=>{ tub(c,W,H,p.w,[{x:.32,flow:p.a,label:'tap 1'},{x:.62,flow:p.b,label:'tap 2'}],null); },
+  },
+  difference:{ name:'Difference rule — bathtub with a drain', title:'A bathtub with a tap and a drain',
+    story:'Water comes in from the tap and leaks out of the drain at the same time. The level changes at “in” minus “out”. If out is bigger than in, the tub empties.',
+    tu:'minute', qu:'litres', qname:'Water in the tub',
+    now:[{k:'w',label:'Water in the tub',unit:'litres',min:0,max:200,step:1,def:80}],
+    speed:[{k:'a',label:'Tap flow in',unit:'litres per minute',min:0,max:15,step:0.5,def:8},
+           {k:'b',label:'Drain flow out',unit:'litres per minute',min:0,max:15,step:0.5,def:3}],
+    q:p=>p.w, rate:p=>p.a-p.b,
+    step:(p,dt)=>({...p,w:Math.max(0,p.w+(p.a-p.b)*dt)}),
+    say:p=>{const r=p.a-p.b;return `The tub holds ${n(p.w)} litres. The level is changing by <b>${n(r)} litres per minute</b> — ${r>0?'it is filling.':r<0?'it is emptying.':'in and out are equal, so the level stays put.'}`},
+    words:p=>`Level speed = flow in − flow out = <b>${n(p.a)} − ${n(p.b)} = ${n(p.a-p.b)}</b>`,
+    math:`Textbook form: <code>(f − g)′ = f′ − g′</code>. f is water that came in, g is water that went out.`,
+    draw:(c,W,H,p)=>{ tub(c,W,H,p.w,[{x:.47,flow:p.a,label:'tap'}],p.b); },
+  },
+  product:{ name:'Product rule — stretching a rectangle', title:'A rectangle being stretched',
+    story:'Think of a rectangle of chewing gum. You pull its width and its height at the same time. Area = width × height. The area grows for two reasons at once, and the rule simply adds them.',
+    tu:'second', qu:'cm²', qname:'Area',
+    now:[{k:'w',label:'Width',unit:'cm',min:1,max:20,step:0.5,def:8},
+         {k:'h',label:'Height',unit:'cm',min:1,max:12,step:0.5,def:4}],
+    speed:[{k:'a',label:'Width is growing by',unit:'cm per second',min:0,max:4,step:0.1,def:2},
+           {k:'b',label:'Height is growing by',unit:'cm per second',min:0,max:4,step:0.1,def:1}],
+    q:p=>p.w*p.h, rate:p=>p.a*p.h+p.w*p.b,
+    step:(p,dt)=>({...p,w:p.w+p.a*dt,h:p.h+p.b*dt}),
+    say:p=>`The rectangle is ${n(p.w)} × ${n(p.h)} cm, area ${n(p.w*p.h)} cm². The area is growing at <b>${n(p.a*p.h+p.w*p.b)} cm² per second</b>.`,
+    words:p=>`Area speed = (width speed × height) + (width × height speed)<br>= (${n(p.a)} × ${n(p.h)}) + (${n(p.w)} × ${n(p.b)}) = <b>${n(p.a*p.h)} + ${n(p.w*p.b)} = ${n(p.a*p.h+p.w*p.b)}</b><br><span style="color:var(--muted);font-size:14px">Look at the picture: the first number is the strip added on the right, the second is the strip added on top.</span>`,
+    math:`Textbook form: <code>(f · g)′ = f′·g + f·g′</code>. f is the width, g is the height.`,
+    draw:(c,W,H,p)=>{
+      const s=Math.min((W-140)/(p.w+p.a+1),(H-70)/(p.h+p.b+1)); const x0=60,y0=H-30;
+      c.fillStyle='#e6ebf5';c.fillRect(x0,y0-p.h*s,p.w*s,p.h*s);
+      c.strokeStyle='var(--blue)';c.strokeStyle='#2d3b66';c.lineWidth=2;c.strokeRect(x0,y0-p.h*s,p.w*s,p.h*s);
+      // strips added in one second
+      c.fillStyle='#f4c7a1';c.fillRect(x0+p.w*s,y0-p.h*s,p.a*s,p.h*s);           // right strip
+      c.fillStyle='#f4c7a1';c.fillRect(x0,y0-(p.h+p.b)*s,p.w*s,p.b*s);           // top strip
+      c.fillStyle='#e8a878';c.fillRect(x0+p.w*s,y0-(p.h+p.b)*s,p.a*s,p.b*s);   // corner
+      c.strokeStyle='#c8651b';c.setLineDash([5,4]);c.strokeRect(x0,y0-(p.h+p.b)*s,(p.w+p.a)*s,(p.h+p.b)*s);c.setLineDash([]);
+      c.fillStyle='#1f2a44';c.font='13px Palatino,Georgia,serif';c.textAlign='center';c.textBaseline='top';
+      c.fillText('width '+n(p.w)+' cm',x0+p.w*s/2,y0+6);
+      c.save();c.translate(x0-10,y0-p.h*s/2);c.rotate(-Math.PI/2);c.textBaseline='bottom';c.fillText('height '+n(p.h)+' cm',0,0);c.restore();
+      c.fillStyle='#8a4a1a';c.textBaseline='middle';
+      if(p.a*s>30){c.save();c.translate(x0+(p.w+p.a/2)*s,y0-p.h*s/2);c.rotate(-Math.PI/2);c.fillText(n(p.a*p.h)+' cm²',0,0);c.restore();}
+      if(p.b*s>16)c.fillText(n(p.w*p.b)+' cm²',x0+p.w*s/2,y0-(p.h+p.b/2)*s);
+      c.textAlign='left';c.fillStyle='#6b7280';c.textBaseline='top';
+      c.fillText('orange = what one more second adds. The darker corner is tiny compared with the strips, and the rule ignores it.',12,10);
+    },
+  },
+  quotient:{ name:'Quotient rule — pizza per guest', title:'Pizza slices per guest at a party',
+    story:'Each guest’s share = slices ÷ guests. Pizzas keep arriving (good for the share) and guests keep arriving (bad for the share). The rule works out the balance of those two effects.',
+    tu:'hour', qu:'slices each', qname:'Share per guest',
+    now:[{k:'s',label:'Slices on the table',unit:'slices',min:1,max:60,step:1,def:24},
+         {k:'g',label:'Guests',unit:'people',min:1,max:20,step:1,def:4}],
+    speed:[{k:'a',label:'Slices arriving',unit:'slices per hour',min:0,max:40,step:1,def:12},
+           {k:'b',label:'Guests arriving',unit:'people per hour',min:0,max:10,step:0.5,def:3}],
+    q:p=>p.s/p.g, rate:p=>(p.a*p.g-p.s*p.b)/(p.g*p.g),
+    step:(p,dt)=>({...p,s:p.s+p.a*dt,g:p.g+p.b*dt}),
+    say:p=>{const r=(p.a*p.g-p.s*p.b)/(p.g*p.g);return `${n(p.s)} slices for ${n(p.g)} guests: ${n(p.s/p.g)} slices each. The share is changing by <b>${n(r)} slices each, per hour</b> — ${r<0?'shrinking: guests are arriving faster than pizza.':r>0?'growing: pizza is arriving faster than guests.':'staying the same.'}`},
+    words:p=>{const up=p.a/p.g,down=p.s*p.b/(p.g*p.g);return `Share speed = (help from new slices) − (hurt from new guests)<br>help = slices arriving ÷ guests = ${n(p.a)} ÷ ${n(p.g)} = ${n(up)}<br>hurt = (slices × guests arriving) ÷ guests² = (${n(p.s)} × ${n(p.b)}) ÷ ${n(p.g)}² = ${n(down)}<br><b>${n(up)} − ${n(down)} = ${n(up-down)}</b>`},
+    math:`Textbook form: <code>(f / g)′ = (f′·g − f·g′) / g²</code>. f is slices, g is guests. It is the same two effects written as one fraction.`,
+    draw:(c,W,H,p)=>{
+      c.fillStyle='#6b7280';c.font='13px Palatino,Georgia,serif';c.textAlign='left';c.textBaseline='top';
+      c.fillText('slices (each triangle = 1)',16,12); c.fillText('guests',16,H/2+4);
+      const cols=Math.ceil(Math.min(60,p.s)),sz=Math.min(26,(W-32)/30);
+      for(let i=0;i<Math.round(p.s);i++){const x=16+(i%30)*sz,y=34+Math.floor(i/30)*(sz+4);
+        c.beginPath();c.moveTo(x,y+sz-2);c.lineTo(x+sz/2,y);c.lineTo(x+sz-2,y+sz-2);c.closePath();c.fillStyle='#f0b25c';c.fill();c.strokeStyle='#c8651b';c.lineWidth=1;c.stroke();}
+      for(let i=0;i<Math.round(p.g);i++){const x=16+i*34,y=H/2+26;
+        c.beginPath();c.arc(x+12,y+10,9,0,TAU);c.fillStyle='#8fc3e8';c.fill();c.strokeStyle='#2d3b66';c.stroke();
+        c.beginPath();c.moveTo(x,y+42);c.quadraticCurveTo(x+12,y+14,x+24,y+42);c.closePath();c.fill();c.stroke();}
+      c.fillStyle='#1f2a44';c.font='600 22px Palatino,Georgia,serif';c.textAlign='right';c.textBaseline='bottom';
+      c.fillText(n(p.s/p.g)+' slices each',W-16,H-12);
+    },
+  },
+  reciprocal:{ name:'Reciprocal rule — minutes per kilometre', title:'Minutes per kilometre while you speed up',
+    story:'Running at 10 km/h, one kilometre takes 6 minutes (60 ÷ 10). Run faster and each kilometre takes less time. Time per km is “1 ÷ speed” (times 60 to get minutes). This example asks: while you are speeding up, how fast is your time-per-km dropping?',
+    tu:'minute', qu:'min per km', qname:'Minutes per km',
+    now:[{k:'v',label:'Your speed',unit:'km/h',min:3,max:20,step:0.1,def:10}],
+    speed:[{k:'a',label:'You are speeding up by',unit:'km/h gained per minute',min:0,max:3,step:0.1,def:1}],
+    q:p=>60/p.v, rate:p=>-60*p.a/(p.v*p.v),
+    step:(p,dt)=>({...p,v:p.v+p.a*dt}),
+    say:p=>`At ${n(p.v)} km/h a kilometre takes ${n(60/p.v)} minutes. Your time per km is changing by <b>${n(-60*p.a/(p.v*p.v))} minutes, per minute of speeding up</b>. Try the same speed-up at 5 km/h and at 18 km/h: the saving is big when you are slow and tiny when you are already fast.`,
+    words:p=>`Time-per-km speed = − (speed-up) ÷ (speed × speed), times 60<br>= − ${n(p.a)} ÷ (${n(p.v)} × ${n(p.v)}) × 60 = <b>${n(-60*p.a/(p.v*p.v))}</b><br><span style="color:var(--muted);font-size:14px">The minus sign: faster means less time. Dividing by speed² twice-over: the saving shrinks quickly as you get faster.</span>`,
+    math:`Textbook form: <code>(1 / f)′ = −f′ / f²</code>. f is your speed, f′ is how fast it is increasing.`,
+    draw:(c,W,H,p)=>{
+      const bar=(y,label,val,max,color,unit)=>{c.fillStyle='#6b7280';c.font='13px Palatino,Georgia,serif';c.textAlign='left';c.textBaseline='bottom';c.fillText(label,16,y-6);
+        c.fillStyle='#eef0ea';c.fillRect(16,y,W-32,26);c.fillStyle=color;c.fillRect(16,y,(W-32)*Math.min(1,val/max),26);
+        c.fillStyle='#1f2a44';c.font='600 15px Palatino,Georgia,serif';c.textBaseline='middle';c.fillText(n(val)+' '+unit,24,y+13);};
+      bar(40,'your speed',p.v,20,'#8fc3e8','km/h');
+      bar(120,'minutes for one kilometre',60/p.v,20,'#f4c7a1','min');
+      // curve of minutes vs speed with point
+      const x0=16,y0=H-16,w=W-32,h=H-180; c.strokeStyle='#dfe3da';c.strokeRect(x0,y0-h,w,h);
+      c.strokeStyle='#2d3b66';c.lineWidth=2;c.beginPath();
+      for(let i=0;i<=100;i++){const v=3+17*i/100,X=x0+w*(v-3)/17,Y=y0-h*Math.min(1,(60/v)/20);i?c.lineTo(X,Y):c.moveTo(X,Y);}c.stroke();
+      const X=x0+w*(p.v-3)/17,Y=y0-h*Math.min(1,(60/p.v)/20);c.beginPath();c.arc(X,Y,6,0,TAU);c.fillStyle='#fff';c.fill();c.strokeStyle='#1f8a70';c.lineWidth=2.5;c.stroke();
+      c.fillStyle='#6b7280';c.font='12px Palatino,Georgia,serif';c.textAlign='right';c.textBaseline='bottom';c.fillText('minutes per km, for every speed from 3 to 20 km/h — notice it flattens out',x0+w-6,y0-h+16);
+    },
+  },
+  chain:{ name:'Chain rule — ripple on a pond', title:'A ripple spreading on a pond',
+    story:'You drop a stone. The ripple’s radius grows with time. The area inside the ripple depends on the radius (area = π × radius²). So time changes the radius, and the radius changes the area: a chain of two steps. The rule multiplies the two steps.',
+    tu:'second', qu:'cm²', qname:'Area inside the ripple',
+    now:[{k:'r',label:'Radius of the ripple',unit:'cm',min:1,max:60,step:1,def:20}],
+    speed:[{k:'a',label:'Radius is growing by',unit:'cm per second',min:0.5,max:10,step:0.5,def:4}],
+    q:p=>Math.PI*p.r*p.r, rate:p=>TAU*p.r*p.a,
+    step:(p,dt)=>({...p,r:p.r+p.a*dt}),
+    say:p=>`Radius ${n(p.r)} cm, area ${n(Math.PI*p.r*p.r)} cm². The area is growing at <b>${n(TAU*p.r*p.a)} cm² per second</b>.`,
+    words:p=>`Area speed = (area gained per cm of radius) × (cm of radius gained per second)<br>area per cm of radius = the ring around the edge = 2π × radius = 2 × 3.14 × ${n(p.r)} = ${n(TAU*p.r)}<br><b>${n(TAU*p.r)} × ${n(p.a)} = ${n(TAU*p.r*p.a)}</b>`,
+    math:`Textbook form: <code>f(g(t))′ = f′(g(t)) · g′(t)</code>. g turns time into radius, f turns radius into area. Step 1 speed × step 2 speed.`,
+    draw:(c,W,H,p)=>{
+      const cx=W/2,cy=H/2,s=Math.min(W,H)/2/(p.r+p.a+4);
+      c.fillStyle='#e6f1fa';c.fillRect(0,0,W,H);
+      c.beginPath();c.arc(cx,cy,(p.r+p.a)*s,0,TAU);c.fillStyle='#f4c7a1';c.fill();
+      c.beginPath();c.arc(cx,cy,p.r*s,0,TAU);c.fillStyle='#8fc3e8';c.fill();c.strokeStyle='#2d3b66';c.lineWidth=2;c.stroke();
+      c.strokeStyle='#c8651b';c.setLineDash([5,4]);c.beginPath();c.arc(cx,cy,(p.r+p.a)*s,0,TAU);c.stroke();c.setLineDash([]);
+      c.strokeStyle='#1f2a44';c.lineWidth=1.5;c.beginPath();c.moveTo(cx,cy);c.lineTo(cx+p.r*s,cy);c.stroke();
+      c.fillStyle='#1f2a44';c.font='13px Palatino,Georgia,serif';c.textAlign='center';c.textBaseline='bottom';c.fillText('radius '+n(p.r)+' cm',cx+p.r*s/2,cy-4);
+      c.fillStyle='#6b7280';c.textAlign='left';c.textBaseline='top';c.fillText('orange ring = area added in one second (radius grows '+n(p.a)+' cm)',12,10);
+    },
+  },
+};
+
+// shared bathtub drawing
+function tub(c,W,H,water,taps,drain){
+  const x0=W*.2,x1=W*.8,y0=H*.32,y1=H*.72,maxL=200;
+  c.fillStyle='#eef0ea';c.fillRect(x0,y0,x1-x0,y1-y0);
+  const lvl=y1-(y1-y0)*Math.min(1,water/maxL);
+  c.fillStyle='#8fc3e8';c.fillRect(x0,lvl,x1-x0,y1-lvl);
+  c.strokeStyle='#2d3b66';c.lineWidth=3;c.beginPath();c.moveTo(x0,y0);c.lineTo(x0,y1);c.lineTo(x1,y1);c.lineTo(x1,y0);c.stroke();
+  c.fillStyle='#1f2a44';c.font='600 16px Palatino,Georgia,serif';c.textAlign='center';c.textBaseline='middle';c.fillText(n(water)+' L',(x0+x1)/2,Math.min(lvl+22,y1-14));
+  c.font='13px Palatino,Georgia,serif';
+  for(const t of taps){const x=W*t.x;c.fillStyle='#9aa093';c.fillRect(x-14,y0-46,28,14);c.fillRect(x-4,y0-32,8,10);
+    c.fillStyle='#1f2a44';c.textBaseline='bottom';c.fillText(t.label+': '+n(t.flow)+' L/min',x,y0-50);
+    if(t.flow>0){c.strokeStyle='#5aa5d6';c.lineWidth=Math.max(1,Math.min(10,t.flow));c.beginPath();c.moveTo(x,y0-22);c.lineTo(x,lvl-2);c.stroke();}}
+  if(drain!=null){const x=x1-30;c.fillStyle='#4b5563';c.fillRect(x-10,y1-4,20,8);
+    if(drain>0){c.strokeStyle='#5aa5d6';c.lineWidth=Math.max(1,Math.min(10,drain));c.beginPath();c.moveTo(x,y1+4);c.lineTo(x,y1+22);c.stroke();}
+    c.fillStyle='#1f2a44';c.textBaseline='top';c.textAlign='center';c.fillText('drain: '+n(drain)+' L/min',x,y1+26);}
+}
+
+// ---------- UI ----------
+const sel=document.getElementById('rule'),cv=document.getElementById('c'),ctx=cv.getContext('2d'),wrap=document.getElementById('wrap');
+for(const k in R){const o=document.createElement('option');o.value=k;o.textContent=R[k].name;sel.appendChild(o);}
+let cur,p={},anim=null;
+const $=id=>document.getElementById(id);
+
+function knob(sp,cls,host){
+  const d=document.createElement('div');d.className='knob '+cls;
+  d.innerHTML=`<span>${sp.label}</span><b id="v_${sp.k}"></b><input type="range" id="k_${sp.k}" min="${sp.min}" max="${sp.max}" step="${sp.step}" value="${sp.def}" aria-label="${sp.label}"><small>${sp.unit}</small>`;
+  d.querySelector('input').addEventListener('input',e=>{p[sp.k]=+e.target.value;$('result').textContent='';update();});
+  host.appendChild(d);
+}
+function load(key){
+  if(anim)cancelAnimationFrame(anim);anim=null;
+  cur=R[key];p={};$('nowKnobs').innerHTML='';$('speedKnobs').innerHTML='';
+  $('title').textContent=cur.title;$('story').textContent=cur.story;$('result').textContent='';
+  for(const sp of cur.now){p[sp.k]=sp.def;knob(sp,'now',$('nowKnobs'));}
+  for(const sp of cur.speed){p[sp.k]=sp.def;knob(sp,'speed',$('speedKnobs'));}
+  document.querySelectorAll('.play button').forEach(b=>{const dt=+b.dataset.dt;b.textContent='let '+(dt===1?'1 '+cur.tu:dt+' '+cur.tu+'s')+' pass';});
+  update();
+}
+function update(){
+  for(const sp of [...cur.now,...cur.speed]){$('v_'+sp.k).textContent=n(p[sp.k]);const i=$('k_'+sp.k);if(i&&+i.value!==p[sp.k])i.value=p[sp.k];}
+  $('say').innerHTML=cur.say(p);$('words').innerHTML=cur.words(p);$('math').innerHTML=cur.math;
+  draw();
+}
+let W=0,H=0;
+function resize(){const dpr=window.devicePixelRatio||1;W=wrap.clientWidth;H=wrap.clientHeight;cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);if(cur)draw();}
+function draw(){ctx.clearRect(0,0,W,H);cur.draw(ctx,W,H,p);}
+
+// let time pass: animate, then compare actual change with rule × time
+document.querySelectorAll('.play button').forEach(b=>b.addEventListener('click',()=>{
+  if(anim)return;
+  const dt=+b.dataset.dt,start={...p},before=cur.q(p),rate=cur.rate(p),pred=rate*dt,t0=performance.now();
+  const tick=now=>{const u=Math.min(1,(now-t0)/700);p=cur.step(start,dt*u);update();
+    if(u<1)anim=requestAnimationFrame(tick);else{anim=null;
+      const after=cur.q(p),actual=after-before,d=dt<1?4:2;
+      $('result').innerHTML=`In ${dt} ${cur.tu}${dt===1?'':'s'}: ${cur.qname.toLowerCase()} went from ${n(before,d)} to ${n(after,d)} ${cur.qu}, a change of <b>${n(actual,d)}</b>. The rule predicted ${n(rate,d)} × ${dt} = <b>${n(pred,d)}</b>.`+
+        (Math.abs(actual-pred)>Math.abs(pred)*0.005+1e-9?` The small gap is the “corner” effect: the speeds themselves changed during that time. The shorter the time you let pass, the closer the two numbers get — that is what a derivative is: the change rate at one exact instant.`:` They match: with steady speeds the rule is exact.`);}};
+  anim=requestAnimationFrame(tick);
+}));
+
+sel.addEventListener('change',()=>load(sel.value));
+window.addEventListener('resize',resize);
+resize();load('sum');
+})();
+</script>
+</body>
+</html>
