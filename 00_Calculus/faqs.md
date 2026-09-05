@@ -13,6 +13,7 @@ Some real ones where nothing is moving in time:
 
 ## Functions that don't have derivatives
 - the functions which have breakages or sharp turns or corners don't have derivates at all and it is because thef delta-x is coming from the right is different from the delta-x coming from the left and tangent line (slope) changes immediately. For example ReLU @ 0
+- at any point, the left- and right-hand limits are shoul be equal for derivative to exist
 - Verticle tangents: because a vericle line has infinite derivative possibilities and infinity is not a real number 
 - Can I assign one finite slope to the tangent at this point?" if Yes => differentiable, if No => not differentiable
 - | Situation          | What happens?                           | Derivative?     |
