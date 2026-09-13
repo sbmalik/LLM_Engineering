@@ -158,3 +158,5 @@ tensorboard/
 .tensorboard/
 
 _assets/
+
+**.txt
