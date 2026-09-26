@@ -160,3 +160,5 @@ tensorboard/
 _assets/
 
 **.txt
+
+**train_runs**
