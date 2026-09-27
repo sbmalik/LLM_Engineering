@@ -9,6 +9,7 @@ dependencies = [
     "matplotlib>=3.11.1",
     "numpy>=2.5.2",
     "seaborn>=0.13.2",
+    "tensorflow>=2.15.0",
     "tiktoken>=0.14.0",
     "torch==2.4.1",
     "torchviz>=0.0.3",
