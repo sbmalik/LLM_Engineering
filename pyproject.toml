@@ -11,7 +11,8 @@ dependencies = [
     "seaborn>=0.13.2",
     "tensorflow>=2.15.0",
     "tiktoken>=0.14.0",
-    "torch==2.4.1",
+    "torch==2.5",
     "torchviz>=0.0.3",
     "tqdm>=4.70.1",
+    "transformers>=5.18.0",
 ]
